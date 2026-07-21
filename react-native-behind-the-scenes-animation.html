@@ -1,0 +1,1155 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>React Native Behind the Scenes — Visual Animation</title>
+    <style>
+      :root {
+        --bg0: #0b1220;
+        --bg1: #0f172a;
+        --panel: rgba(15, 23, 42, 0.94);
+        --panel-border: rgba(148, 163, 184, 0.22);
+        --text: #f1f5f9;
+        --muted: #94a3b8;
+        --js: #61dafb;
+        --bridge: #fbbf24;
+        --jsi: #a78bfa;
+        --shadow: #34d399;
+        --ui: #fb923c;
+        --screen: #4ade80;
+        --accent: #38bdf8;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        color: var(--text);
+        font: 15px/1.45 "Segoe UI", system-ui, sans-serif;
+        background:
+          radial-gradient(ellipse 70% 45% at 50% -10%, #0e4a6e 0%, transparent 55%),
+          linear-gradient(165deg, #071018, var(--bg0) 40%, var(--bg1));
+      }
+
+      main {
+        width: min(1220px, 96vw);
+        margin: 0 auto;
+        padding: 28px 0 48px;
+      }
+
+      header {
+        text-align: center;
+        margin-bottom: 14px;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(1.45rem, 3.4vw, 2.25rem);
+        letter-spacing: -0.02em;
+      }
+
+      .subtitle {
+        margin: 8px 0 0;
+        color: var(--muted);
+      }
+
+      .mode-switch {
+        display: flex;
+        justify-content: center;
+        gap: 8px;
+        margin: 16px 0 12px;
+        flex-wrap: wrap;
+      }
+
+      .mode-btn {
+        border: 1px solid var(--panel-border);
+        background: rgba(255, 255, 255, 0.05);
+        color: var(--muted);
+        border-radius: 999px;
+        padding: 9px 16px;
+        font: inherit;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      .mode-btn.active {
+        color: #0b1220;
+        background: linear-gradient(135deg, #67e8f9, #38bdf8);
+        border-color: transparent;
+      }
+
+      .legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        justify-content: center;
+        margin: 10px 0 16px;
+      }
+
+      .chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        padding: 6px 12px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid var(--panel-border);
+        font-size: 0.82rem;
+        color: var(--muted);
+      }
+
+      .dot {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+      }
+
+      .dot.js {
+        background: var(--js);
+      }
+      .dot.bridge {
+        background: var(--bridge);
+      }
+      .dot.jsi {
+        background: var(--jsi);
+      }
+      .dot.shadow {
+        background: var(--shadow);
+      }
+      .dot.ui {
+        background: var(--ui);
+      }
+      .dot.screen {
+        background: var(--screen);
+      }
+
+      .narration {
+        min-height: 76px;
+        margin-bottom: 16px;
+        padding: 14px 18px;
+        border-radius: 14px;
+        border: 1px solid var(--panel-border);
+        border-left: 5px solid var(--accent);
+        background: var(--panel);
+      }
+
+      .narration .phase {
+        display: inline-block;
+        margin-bottom: 6px;
+        padding: 2px 10px;
+        border-radius: 999px;
+        font-size: 0.75rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        background: rgba(56, 189, 248, 0.18);
+        color: #bae6fd;
+      }
+
+      .narration p {
+        margin: 0;
+        font-size: 1.02rem;
+        font-weight: 600;
+      }
+
+      .stage {
+        display: grid;
+        grid-template-columns: 1.2fr 1fr 1fr;
+        grid-template-areas:
+          "code js bridge"
+          "code shadow ui"
+          "phone bridge-note ui";
+        gap: 12px;
+        align-items: stretch;
+      }
+
+      .panel {
+        position: relative;
+        min-height: 132px;
+        padding: 12px 14px;
+        border-radius: 16px;
+        border: 1px solid var(--panel-border);
+        background: var(--panel);
+        overflow: hidden;
+      }
+
+      .panel h2 {
+        margin: 0 0 10px;
+        font-size: 0.9rem;
+        font-weight: 700;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
+
+      .tag {
+        font-size: 0.66rem;
+        font-weight: 700;
+        padding: 2px 8px;
+        border-radius: 999px;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+        white-space: nowrap;
+      }
+
+      .code {
+        grid-area: code;
+        background: #060b14;
+      }
+      .js-panel {
+        grid-area: js;
+        border-color: color-mix(in srgb, var(--js) 50%, transparent);
+      }
+      .bridge-panel {
+        grid-area: bridge;
+        border-color: color-mix(in srgb, var(--bridge) 50%, transparent);
+      }
+      .shadow-panel {
+        grid-area: shadow;
+        border-color: color-mix(in srgb, var(--shadow) 50%, transparent);
+      }
+      .ui-panel {
+        grid-area: ui;
+        border-color: color-mix(in srgb, var(--ui) 50%, transparent);
+      }
+      .phone-panel {
+        grid-area: phone;
+        border-color: color-mix(in srgb, var(--screen) 45%, transparent);
+        min-height: 180px;
+      }
+      .note-panel {
+        grid-area: bridge-note;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 10px;
+      }
+
+      .code-lines {
+        font: 12.5px/1.7 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      }
+
+      .line {
+        display: block;
+        padding: 1px 8px;
+        border-radius: 6px;
+        color: #cbd5e1;
+        transition: background 0.25s, color 0.25s;
+      }
+
+      .line .n {
+        color: #64748b;
+        margin-right: 8px;
+        user-select: none;
+      }
+
+      .line.active {
+        background: rgba(56, 189, 248, 0.2);
+        color: #fff;
+        box-shadow: inset 3px 0 0 var(--accent);
+      }
+
+      .line.done {
+        color: #7c8aa0;
+      }
+
+      .kw {
+        color: #c084fc;
+      }
+      .fn {
+        color: #67e8f9;
+      }
+      .str {
+        color: #86efac;
+      }
+      .cm {
+        color: #64748b;
+      }
+      .comp {
+        color: #fca5a5;
+      }
+
+      .bucket {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        min-height: 64px;
+      }
+
+      .token {
+        display: none;
+        padding: 8px 10px;
+        border-radius: 10px;
+        background: rgba(2, 6, 23, 0.85);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        animation: popIn 0.35s ease;
+      }
+
+      .token.show {
+        display: block;
+      }
+
+      .token.pulse {
+        box-shadow: 0 0 0 2px currentColor, 0 0 16px color-mix(in srgb, currentColor 40%, transparent);
+        transform: translateY(-2px);
+      }
+
+      .token.js {
+        color: var(--js);
+      }
+      .token.bridge {
+        color: var(--bridge);
+      }
+      .token.jsi {
+        color: var(--jsi);
+      }
+      .token.shadow {
+        color: var(--shadow);
+      }
+      .token.ui {
+        color: var(--ui);
+      }
+      .token.screen {
+        color: var(--screen);
+      }
+
+      .empty {
+        color: var(--muted);
+        font-size: 0.82rem;
+        opacity: 0.7;
+        font-style: italic;
+      }
+
+      .phone {
+        width: min(170px, 100%);
+        margin: 8px auto 0;
+        border: 2px solid #334155;
+        border-radius: 22px;
+        background: #020617;
+        padding: 12px 10px 14px;
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+      }
+
+      .phone-notch {
+        width: 42px;
+        height: 5px;
+        border-radius: 999px;
+        background: #1e293b;
+        margin: 0 auto 12px;
+      }
+
+      .phone-screen {
+        min-height: 110px;
+        border-radius: 12px;
+        background: linear-gradient(180deg, #0f172a, #111827);
+        padding: 14px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+      }
+
+      .phone-count {
+        font-size: 1.8rem;
+        font-weight: 800;
+        color: var(--screen);
+        opacity: 0.25;
+        transition: opacity 0.3s, transform 0.3s;
+      }
+
+      .phone-count.on {
+        opacity: 1;
+        transform: scale(1.05);
+      }
+
+      .phone-btn {
+        border: 0;
+        border-radius: 8px;
+        padding: 7px 16px;
+        background: #0369a1;
+        color: white;
+        font-weight: 700;
+        opacity: 0.25;
+        transition: opacity 0.3s, transform 0.3s;
+      }
+
+      .phone-btn.on {
+        opacity: 1;
+      }
+
+      .phone-btn.tap {
+        transform: scale(0.94);
+        background: #0284c7;
+      }
+
+      .flow-box {
+        padding: 10px 12px;
+        border-radius: 12px;
+        background: rgba(2, 6, 23, 0.65);
+        border: 1px dashed rgba(255, 255, 255, 0.14);
+        font-size: 0.8rem;
+        color: var(--muted);
+      }
+
+      .flow-box strong {
+        color: var(--text);
+      }
+
+      .hub {
+        width: 118px;
+        height: 118px;
+        margin: 6px auto 0;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        text-align: center;
+        font-weight: 800;
+        font-size: 0.88rem;
+        line-height: 1.2;
+        background: radial-gradient(circle at 35% 30%, #164e63, #0f172a 70%);
+        border: 3px solid rgba(255, 255, 255, 0.12);
+        position: relative;
+      }
+
+      .hub::before {
+        content: "";
+        position: absolute;
+        inset: -9px;
+        border-radius: 50%;
+        border: 5px solid transparent;
+        border-top-color: var(--js);
+        border-right-color: var(--ui);
+        opacity: 0.35;
+        animation: spin 2.8s linear infinite;
+      }
+
+      .hub.active::before {
+        opacity: 1;
+        animation-duration: 0.85s;
+      }
+
+      .hub.classic {
+        box-shadow: 0 0 0 7px rgba(251, 191, 36, 0.08);
+      }
+
+      .hub.modern {
+        box-shadow: 0 0 0 7px rgba(167, 139, 250, 0.1);
+      }
+
+      .timeline {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        justify-content: center;
+        margin: 18px 0 12px;
+      }
+
+      .step-dot {
+        min-width: 28px;
+        height: 28px;
+        padding: 0 8px;
+        border-radius: 999px;
+        display: grid;
+        place-items: center;
+        background: rgba(255, 255, 255, 0.06);
+        color: var(--muted);
+        font-size: 0.75rem;
+        font-weight: 700;
+        border: 1px solid transparent;
+        cursor: pointer;
+      }
+
+      .step-dot.active {
+        background: var(--accent);
+        color: #082f49;
+        border-color: #e0f2fe;
+      }
+
+      .step-dot.done {
+        background: rgba(74, 222, 128, 0.16);
+        color: var(--screen);
+      }
+
+      .controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        justify-content: center;
+        margin-top: 8px;
+      }
+
+      button.ctrl {
+        border: 0;
+        border-radius: 999px;
+        padding: 11px 18px;
+        font: inherit;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      #play {
+        background: linear-gradient(135deg, #67e8f9, #38bdf8);
+        color: #082f49;
+        min-width: 170px;
+      }
+
+      #prev,
+      #next,
+      #reset {
+        background: rgba(255, 255, 255, 0.1);
+        color: var(--text);
+        border: 1px solid var(--panel-border);
+      }
+
+      button:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
+
+      .key-takeaway {
+        margin: 22px auto 0;
+        max-width: 880px;
+        padding: 14px 16px;
+        border-radius: 14px;
+        background: rgba(2, 6, 23, 0.55);
+        border: 1px solid var(--panel-border);
+        color: var(--muted);
+        font-size: 0.92rem;
+        text-align: center;
+      }
+
+      .key-takeaway strong {
+        color: var(--text);
+      }
+
+      @keyframes popIn {
+        from {
+          opacity: 0;
+          transform: translateY(8px) scale(0.96);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0) scale(1);
+        }
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      @media (max-width: 960px) {
+        .stage {
+          grid-template-columns: 1fr 1fr;
+          grid-template-areas:
+            "code code"
+            "js bridge"
+            "shadow ui"
+            "phone bridge-note";
+        }
+      }
+
+      @media (max-width: 560px) {
+        .stage {
+          grid-template-columns: 1fr;
+          grid-template-areas:
+            "code"
+            "js"
+            "bridge"
+            "shadow"
+            "ui"
+            "phone"
+            "bridge-note";
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>React Native Behind the Scenes</h1>
+        <p class="subtitle">
+          Watch how JS, Bridge/JSI, Shadow Tree, and the UI Thread turn React code into native views
+        </p>
+      </header>
+
+      <div class="mode-switch" role="group" aria-label="Architecture mode">
+        <button type="button" class="mode-btn active" id="modeClassic" data-mode="classic">
+          Classic Architecture (Bridge)
+        </button>
+        <button type="button" class="mode-btn" id="modeNew" data-mode="new">
+          New Architecture (JSI / Fabric)
+        </button>
+      </div>
+
+      <div class="legend">
+        <span class="chip"><span class="dot js"></span> JS Thread (React + business logic)</span>
+        <span class="chip" id="chipComm"
+          ><span class="dot bridge" id="chipCommDot"></span>
+          <span id="chipCommText">Bridge (JSON messages)</span></span
+        >
+        <span class="chip"><span class="dot shadow"></span> Shadow Tree / Yoga layout</span>
+        <span class="chip"><span class="dot ui"></span> UI / Main Thread (native views)</span>
+        <span class="chip"><span class="dot screen"></span> Device screen</span>
+      </div>
+
+      <div class="narration">
+        <span class="phase" id="phase">Ready</span>
+        <p id="lesson">Choose Classic or New Architecture, then press Play.</p>
+      </div>
+
+      <section class="stage" aria-label="React Native architecture visualization">
+        <article class="panel code">
+          <h2>
+            React Native Code
+            <span class="tag" style="background: rgba(97, 218, 251, 0.18); color: #7dd3fc">JSX</span>
+          </h2>
+          <div class="code-lines" id="code">
+            <span class="line" data-line="1"
+              ><span class="n">1</span><span class="kw">function</span> <span class="fn">Counter</span>() {</span
+            >
+            <span class="line" data-line="2"
+              ><span class="n">2</span>&nbsp;&nbsp;<span class="kw">const</span> [n, setN] = <span class="fn">useState</span>(<span class="str">0</span>)</span
+            >
+            <span class="line" data-line="3"
+              ><span class="n">3</span>&nbsp;&nbsp;<span class="kw">return</span> (</span
+            >
+            <span class="line" data-line="4"
+              ><span class="n">4</span>&nbsp;&nbsp;&nbsp;&nbsp;&lt;<span class="comp">View</span>&gt;</span
+            >
+            <span class="line" data-line="5"
+              ><span class="n">5</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&lt;<span class="comp">Text</span>&gt;{n}&lt;/<span class="comp">Text</span>&gt;</span
+            >
+            <span class="line" data-line="6"
+              ><span class="n">6</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&lt;<span class="comp">Button</span> title=<span class="str">"+"</span></span
+            >
+            <span class="line" data-line="7"
+              ><span class="n">7</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;onPress={() =&gt; setN(n + 1)} /&gt;</span
+            >
+            <span class="line" data-line="8"
+              ><span class="n">8</span>&nbsp;&nbsp;&nbsp;&nbsp;&lt;/<span class="comp">View</span>&gt;</span
+            >
+            <span class="line" data-line="9"><span class="n">9</span>&nbsp;&nbsp;)</span>
+            <span class="line" data-line="10"><span class="n">10</span>}</span>
+          </div>
+        </article>
+
+        <article class="panel js-panel">
+          <h2>
+            JS Thread
+            <span class="tag" style="background: rgba(97, 218, 251, 0.18); color: var(--js)">Hermes / React</span>
+          </h2>
+          <div class="bucket" id="jsBucket">
+            <div class="empty" data-empty>idle</div>
+            <div class="token js" id="t-boot">App boot · JS bundle loaded</div>
+            <div class="token js" id="t-render">React render() · build element tree</div>
+            <div class="token js" id="t-state">useState(0) · n = 0</div>
+            <div class="token js" id="t-handler">onPress → setN(n + 1)</div>
+            <div class="token js" id="t-rerender">Re-render · n = 1 · reconcile</div>
+          </div>
+        </article>
+
+        <article class="panel bridge-panel">
+          <h2>
+            <span id="commTitle">Bridge</span>
+            <span class="tag" id="commTag" style="background: rgba(251, 191, 36, 0.18); color: var(--bridge)">async JSON</span>
+          </h2>
+          <div class="bucket" id="commBucket">
+            <div class="empty" data-empty>idle</div>
+            <div class="token bridge" id="t-bridge-create">JSON: create View / Text / Button</div>
+            <div class="token bridge" id="t-bridge-event">JSON: onPress event → JS</div>
+            <div class="token bridge" id="t-bridge-update">JSON: update Text props</div>
+            <div class="token jsi" id="t-jsi-create">JSI / Fabric: sync UI commands</div>
+            <div class="token jsi" id="t-jsi-event">JSI: native event → JS (direct)</div>
+            <div class="token jsi" id="t-jsi-update">Fabric: update Shadow Tree node</div>
+            <div class="token jsi" id="t-turbo">TurboModule ready (lazy native API)</div>
+          </div>
+        </article>
+
+        <article class="panel shadow-panel">
+          <h2>
+            Shadow Tree / Yoga
+            <span class="tag" style="background: rgba(52, 211, 153, 0.16); color: var(--shadow)">layout</span>
+          </h2>
+          <div class="bucket">
+            <div class="empty" data-empty>empty</div>
+            <div class="token shadow" id="t-shadow-build">Build shadow nodes (View, Text, Button)</div>
+            <div class="token shadow" id="t-yoga">Yoga calculates x / y / width / height</div>
+            <div class="token shadow" id="t-shadow-update">Update Text shadow node · relayout</div>
+          </div>
+        </article>
+
+        <article class="panel ui-panel">
+          <h2>
+            UI / Main Thread
+            <span class="tag" style="background: rgba(251, 146, 60, 0.18); color: var(--ui)">native</span>
+          </h2>
+          <div class="bucket">
+            <div class="empty" data-empty>idle</div>
+            <div class="token ui" id="t-native-create">Create UIView / android.view</div>
+            <div class="token ui" id="t-native-mount">Mount native views on screen</div>
+            <div class="token ui" id="t-native-tap">Native touch → Button pressed</div>
+            <div class="token ui" id="t-native-update">Update native Text to "1"</div>
+          </div>
+        </article>
+
+        <article class="panel phone-panel">
+          <h2>
+            Device Screen
+            <span class="tag" style="background: rgba(74, 222, 128, 0.16); color: var(--screen)">output</span>
+          </h2>
+          <div class="phone" aria-hidden="true">
+            <div class="phone-notch"></div>
+            <div class="phone-screen">
+              <div class="phone-count" id="phoneCount">0</div>
+              <button type="button" class="phone-btn" id="phoneBtn">+</button>
+            </div>
+          </div>
+        </article>
+
+        <article class="panel note-panel">
+          <div class="hub classic" id="hub">RN<br />Runtime</div>
+          <div class="flow-box" id="flowBox">
+            <strong>Classic path:</strong><br />
+            JS Thread → Bridge (JSON) → Shadow/Yoga → UI Thread → Screen
+          </div>
+        </article>
+      </section>
+
+      <div class="timeline" id="timeline" aria-label="Step timeline"></div>
+
+      <div class="controls">
+        <button type="button" class="ctrl" id="prev">← Prev</button>
+        <button type="button" class="ctrl" id="play">▶ Play animation</button>
+        <button type="button" class="ctrl" id="next">Next →</button>
+        <button type="button" class="ctrl" id="reset">↺ Reset</button>
+      </div>
+
+      <p class="key-takeaway" id="takeaway">
+        <strong>Classic:</strong> Bridge = async JSON messages (can become a bottleneck).
+        <strong>New Arch:</strong> JSI + Fabric + TurboModules = faster, typed, less serialization.
+      </p>
+    </main>
+
+    <script>
+      const $ = (sel) => document.querySelector(sel);
+      const $$ = (sel) => [...document.querySelectorAll(sel)];
+
+      const ALL_TOKENS = [
+        "t-boot",
+        "t-render",
+        "t-state",
+        "t-handler",
+        "t-rerender",
+        "t-bridge-create",
+        "t-bridge-event",
+        "t-bridge-update",
+        "t-jsi-create",
+        "t-jsi-event",
+        "t-jsi-update",
+        "t-turbo",
+        "t-shadow-build",
+        "t-yoga",
+        "t-shadow-update",
+        "t-native-create",
+        "t-native-mount",
+        "t-native-tap",
+        "t-native-update",
+      ];
+
+      const classicSteps = [
+        {
+          phase: "Boot",
+          title: "App starts. Hermes loads the JS bundle. React Native runtime is ready on the JS Thread.",
+          show: ["t-boot"],
+          pulse: ["t-boot"],
+          hint: "JS Thread = React + your business logic. Native UI is still empty.",
+        },
+        {
+          phase: "JS Thread",
+          title: "React runs Counter(). useState(0) creates state. JSX becomes a React element tree.",
+          line: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+          show: ["t-boot", "t-render", "t-state"],
+          pulse: ["t-render", "t-state"],
+          hint: "Still only JavaScript so far — no real UIView yet.",
+        },
+        {
+          phase: "Bridge",
+          title: "Classic Architecture: JS cannot talk to native views directly. It sends async JSON messages over the Bridge.",
+          line: [4, 5, 6],
+          doneLines: [1, 2, 3],
+          show: ["t-bridge-create"],
+          pulse: ["t-bridge-create"],
+          hub: true,
+          hint: "Bridge bottleneck: serialize → queue → deserialize. Everything is async.",
+        },
+        {
+          phase: "Shadow / Yoga",
+          title: "Shadow Thread builds a Shadow Tree and Yoga calculates layout (x, y, width, height).",
+          line: [4, 5, 6],
+          doneLines: [1, 2, 3],
+          show: ["t-shadow-build", "t-yoga"],
+          pulse: ["t-yoga"],
+          hint: "Shadow Tree is a layout representation — not pixels yet.",
+        },
+        {
+          phase: "UI Thread",
+          title: "UI / Main Thread creates real native views: UIView (iOS) or android.view (Android).",
+          doneLines: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+          show: ["t-native-create", "t-native-mount"],
+          pulse: ["t-native-mount"],
+          screen: { count: "0", countOn: true, btnOn: true },
+          hint: "Now the user finally sees native UI — not a WebView.",
+        },
+        {
+          phase: "User tap",
+          title: "User taps '+'. The touch is handled by the native Button on the UI Thread.",
+          line: [6, 7],
+          doneLines: [1, 2, 3, 4, 5, 8, 9, 10],
+          show: ["t-native-tap"],
+          pulse: ["t-native-tap"],
+          screen: { count: "0", countOn: true, btnOn: true, tap: true },
+          hint: "Native side felt the press first.",
+        },
+        {
+          phase: "Bridge event",
+          title: "Native sends an onPress event back to JS through the Bridge (again as a message).",
+          line: [7],
+          doneLines: [1, 2, 3, 4, 5, 6, 8, 9, 10],
+          show: ["t-bridge-event", "t-handler"],
+          pulse: ["t-bridge-event"],
+          hub: true,
+          screen: { count: "0", countOn: true, btnOn: true },
+          hint: "Event crossed Native → Bridge → JS Thread.",
+        },
+        {
+          phase: "JS update",
+          title: "JS Thread runs setN(n + 1). React re-renders and reconciles the new tree (Text: 0 → 1).",
+          line: [2, 5, 7],
+          doneLines: [1, 3, 4, 6, 8, 9, 10],
+          show: ["t-rerender"],
+          pulse: ["t-rerender"],
+          screen: { count: "0", countOn: true, btnOn: true },
+          hint: "State lives in JS. UI update still needs native.",
+        },
+        {
+          phase: "Bridge update",
+          title: "Another Bridge message: update the Text native view props.",
+          doneLines: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+          show: ["t-bridge-update"],
+          pulse: ["t-bridge-update"],
+          hub: true,
+          hint: "Each update pays the JSON serialize/deserialize cost.",
+        },
+        {
+          phase: "Layout + UI",
+          title: "Shadow Tree updates, Yoga may relayout, UI Thread changes the native Text to '1'.",
+          doneLines: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+          show: ["t-shadow-update", "t-native-update"],
+          pulse: ["t-native-update"],
+          screen: { count: "1", countOn: true, btnOn: true },
+          hint: "Screen now shows 1. Full round-trip complete.",
+        },
+        {
+          phase: "Complete",
+          title: "Done! Classic path: JS → Bridge → Shadow/Yoga → UI Thread → Screen (and back for events).",
+          doneLines: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+          show: [],
+          screen: { count: "1", countOn: true, btnOn: true },
+          hint: "Bridge is powerful but async + JSON can become a bottleneck.",
+        },
+      ];
+
+      const newSteps = [
+        {
+          phase: "Boot",
+          title: "App starts. Hermes + New Architecture runtime load. JSI is available for direct JS ↔ native access.",
+          show: ["t-boot", "t-turbo"],
+          pulse: ["t-boot", "t-turbo"],
+          hint: "TurboModules can load lazily when first used — not everything at startup.",
+        },
+        {
+          phase: "JS Thread",
+          title: "React runs Counter(). useState(0) + JSX element tree are created on the JS Thread.",
+          line: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+          show: ["t-boot", "t-render", "t-state", "t-turbo"],
+          pulse: ["t-render", "t-state"],
+          hint: "Same React mental model — different native communication layer.",
+        },
+        {
+          phase: "JSI / Fabric",
+          title: "New Architecture: no JSON Bridge bottleneck. JSI lets JS call C++/native directly. Fabric receives UI commands.",
+          line: [4, 5, 6],
+          doneLines: [1, 2, 3],
+          show: ["t-jsi-create", "t-turbo"],
+          pulse: ["t-jsi-create"],
+          hub: true,
+          hint: "JSI can be sync or async — without serializing everything to JSON.",
+        },
+        {
+          phase: "Fabric Shadow Tree",
+          title: "Fabric maintains an immutable Shadow Tree. Yoga still computes layout, with better concurrent rendering support.",
+          line: [4, 5, 6],
+          doneLines: [1, 2, 3],
+          show: ["t-shadow-build", "t-yoga"],
+          pulse: ["t-shadow-build", "t-yoga"],
+          hint: "Fabric aligns better with React 18 concurrent features.",
+        },
+        {
+          phase: "UI Thread",
+          title: "UI Thread mounts real native views from Fabric’s shadow tree.",
+          doneLines: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+          show: ["t-native-create", "t-native-mount"],
+          pulse: ["t-native-mount"],
+          screen: { count: "0", countOn: true, btnOn: true },
+          hint: "User still sees true native UI — same end result, faster path.",
+        },
+        {
+          phase: "User tap",
+          title: "User taps '+'. Native Button handles the touch on the UI Thread.",
+          line: [6, 7],
+          doneLines: [1, 2, 3, 4, 5, 8, 9, 10],
+          show: ["t-native-tap"],
+          pulse: ["t-native-tap"],
+          screen: { count: "0", countOn: true, btnOn: true, tap: true },
+          hint: "Touch starts on native UI Thread.",
+        },
+        {
+          phase: "JSI event",
+          title: "Event reaches JS through JSI — more direct than Bridge JSON messaging.",
+          line: [7],
+          doneLines: [1, 2, 3, 4, 5, 6, 8, 9, 10],
+          show: ["t-jsi-event", "t-handler"],
+          pulse: ["t-jsi-event"],
+          hub: true,
+          screen: { count: "0", countOn: true, btnOn: true },
+          hint: "Less serialization overhead for native ↔ JS communication.",
+        },
+        {
+          phase: "JS update",
+          title: "setN(n + 1) runs. React re-renders and reconciles Text 0 → 1 on the JS Thread.",
+          line: [2, 5, 7],
+          doneLines: [1, 3, 4, 6, 8, 9, 10],
+          show: ["t-rerender"],
+          pulse: ["t-rerender"],
+          screen: { count: "0", countOn: true, btnOn: true },
+          hint: "Your React code is unchanged — architecture underneath changed.",
+        },
+        {
+          phase: "Fabric update",
+          title: "Fabric updates the Shadow Tree node for Text via JSI-backed rendering pipeline.",
+          doneLines: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+          show: ["t-jsi-update"],
+          pulse: ["t-jsi-update"],
+          hub: true,
+          hint: "TurboModules + Fabric + JSI = New Architecture trio.",
+        },
+        {
+          phase: "Layout + UI",
+          title: "Yoga/layout commit + UI Thread updates native Text to '1'. Screen refreshes.",
+          doneLines: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+          show: ["t-shadow-update", "t-native-update"],
+          pulse: ["t-native-update"],
+          screen: { count: "1", countOn: true, btnOn: true },
+          hint: "Same user-visible result, leaner communication path.",
+        },
+        {
+          phase: "Complete",
+          title: "Done! New path: JS → JSI/Fabric → Shadow Tree → UI Thread → Screen. TurboModules for native APIs.",
+          doneLines: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+          show: ["t-turbo"],
+          pulse: ["t-turbo"],
+          screen: { count: "1", countOn: true, btnOn: true },
+          hint: "Interview line: Bridge = async JSON. JSI = direct host object calls.",
+        },
+      ];
+
+      let mode = "classic";
+      let index = 0;
+      let playing = false;
+      let playTimer = null;
+
+      const timeline = $("#timeline");
+
+      function steps() {
+        return mode === "classic" ? classicSteps : newSteps;
+      }
+
+      function rebuildTimeline() {
+        timeline.innerHTML = steps()
+          .map((_, i) => `<button type="button" class="step-dot" data-i="${i}" aria-label="Go to step ${i + 1}">${i + 1}</button>`)
+          .join("");
+      }
+
+      function applyModeUI() {
+        const classic = mode === "classic";
+        $("#modeClassic").classList.toggle("active", classic);
+        $("#modeNew").classList.toggle("active", !classic);
+        $("#commTitle").textContent = classic ? "Bridge" : "JSI / Fabric";
+        $("#commTag").textContent = classic ? "async JSON" : "direct calls";
+        $("#commTag").style.background = classic ? "rgba(251, 191, 36, 0.18)" : "rgba(167, 139, 250, 0.18)";
+        $("#commTag").style.color = classic ? "var(--bridge)" : "var(--jsi)";
+        $("#chipCommDot").className = classic ? "dot bridge" : "dot jsi";
+        $("#chipCommText").textContent = classic ? "Bridge (JSON messages)" : "JSI / Fabric (direct)";
+        $("#hub").className = `hub ${classic ? "classic" : "modern"}`;
+        $("#hub").innerHTML = classic ? "Bridge<br />Runtime" : "JSI<br />Fabric";
+        $("#flowBox").innerHTML = classic
+          ? "<strong>Classic path:</strong><br />JS Thread → Bridge (JSON) → Shadow/Yoga → UI Thread → Screen"
+          : "<strong>New path:</strong><br />JS Thread → JSI / Fabric → Shadow Tree → UI Thread → Screen";
+        $("#takeaway").innerHTML = classic
+          ? "<strong>Classic:</strong> Bridge = async JSON messages (can become a bottleneck). Switch to <strong>New Architecture</strong> to compare JSI + Fabric + TurboModules."
+          : "<strong>New Arch:</strong> JSI (direct JS↔native) + Fabric (renderer) + TurboModules (lazy native modules). Switch to <strong>Classic</strong> to compare the Bridge.";
+      }
+
+      function updateEmpties() {
+        $$(".bucket").forEach((bucket) => {
+          const empty = bucket.querySelector("[data-empty]");
+          if (!empty) return;
+          const visible = [...bucket.querySelectorAll(".token")].some((t) => t.classList.contains("show"));
+          empty.style.display = visible ? "none" : "block";
+        });
+      }
+
+      function renderScreen(cfg) {
+        const count = $("#phoneCount");
+        const btn = $("#phoneBtn");
+        if (!cfg) {
+          count.textContent = "0";
+          count.classList.remove("on");
+          btn.classList.remove("on", "tap");
+          return;
+        }
+        count.textContent = cfg.count ?? "0";
+        count.classList.toggle("on", Boolean(cfg.countOn));
+        btn.classList.toggle("on", Boolean(cfg.btnOn));
+        btn.classList.toggle("tap", Boolean(cfg.tap));
+      }
+
+      function render() {
+        const list = steps();
+        const step = list[index];
+
+        ALL_TOKENS.forEach((id) => {
+          const el = document.getElementById(id);
+          if (!el) return;
+          const visible = step.show.includes(id);
+          el.classList.toggle("show", visible);
+          el.classList.toggle("pulse", Boolean(step.pulse?.includes(id)));
+        });
+
+        const activeLines = Array.isArray(step.line) ? step.line : step.line != null ? [step.line] : [];
+        const doneLines = step.doneLines || [];
+
+        $$(".line").forEach((line) => {
+          const n = Number(line.dataset.line);
+          line.classList.toggle("active", activeLines.includes(n));
+          line.classList.toggle("done", doneLines.includes(n) && !activeLines.includes(n));
+        });
+
+        $("#hub").classList.toggle("active", Boolean(step.hub));
+        $("#phase").textContent = step.phase;
+        $("#lesson").textContent = step.title;
+        renderScreen(step.screen);
+
+        [...timeline.children].forEach((dot, i) => {
+          dot.classList.toggle("active", i === index);
+          dot.classList.toggle("done", i < index);
+        });
+
+        $("#prev").disabled = index === 0 || playing;
+        $("#next").textContent = index === list.length - 1 ? "↺ Restart" : "Next →";
+        $("#play").textContent = playing ? "⏸ Pause" : "▶ Play animation";
+
+        updateEmpties();
+      }
+
+      function go(to) {
+        index = Math.max(0, Math.min(steps().length - 1, to));
+        render();
+      }
+
+      function next() {
+        if (index === steps().length - 1) {
+          go(0);
+          return;
+        }
+        go(index + 1);
+      }
+
+      function stopPlay() {
+        playing = false;
+        if (playTimer) {
+          clearTimeout(playTimer);
+          playTimer = null;
+        }
+        render();
+      }
+
+      async function play() {
+        if (playing) {
+          stopPlay();
+          return;
+        }
+        playing = true;
+        if (index === steps().length - 1) index = 0;
+        render();
+
+        while (playing && index < steps().length) {
+          render();
+          await new Promise((resolve) => {
+            playTimer = setTimeout(resolve, 2300);
+          });
+          if (!playing) break;
+          if (index < steps().length - 1) index += 1;
+          else break;
+        }
+        playing = false;
+        render();
+      }
+
+      function setMode(nextMode) {
+        if (mode === nextMode) return;
+        stopPlay();
+        mode = nextMode;
+        index = 0;
+        applyModeUI();
+        rebuildTimeline();
+        render();
+      }
+
+      $("#next").addEventListener("click", () => {
+        stopPlay();
+        next();
+      });
+      $("#prev").addEventListener("click", () => {
+        stopPlay();
+        go(index - 1);
+      });
+      $("#reset").addEventListener("click", () => {
+        stopPlay();
+        go(0);
+      });
+      $("#play").addEventListener("click", play);
+      $("#modeClassic").addEventListener("click", () => setMode("classic"));
+      $("#modeNew").addEventListener("click", () => setMode("new"));
+      timeline.addEventListener("click", (e) => {
+        const btn = e.target.closest(".step-dot");
+        if (!btn) return;
+        stopPlay();
+        go(Number(btn.dataset.i));
+      });
+
+      applyModeUI();
+      rebuildTimeline();
+      render();
+    </script>
+  </body>
+</html>
